@@ -52,7 +52,7 @@ class GoogleSheetDate:
             ['https://www.googleapis.com/auth/spreadsheets',
              'https://www.googleapis.com/auth/drive'])
         httpAuth = credentials.authorize(httplib2.Http())
-        service = apiclient.discovery.build('sheets', 'v4', http=httpAuth)
+        self.service = apiclient.discovery.build('sheets', 'v4', http=httpAuth)
 
     def read_file(self):
         # Чтение файла
@@ -62,7 +62,7 @@ class GoogleSheetDate:
             range='A:D',
             majorDimension='ROWS'
         ).execute()
-        return values['values'][2]
+        return values['values'][3]
 
 
 def main():
@@ -73,26 +73,25 @@ def main():
     # Создаем фабрику для создания экземпляров Session. Для создания фабрики в аргументе
     # bind передаем объект engine
     Session = sessionmaker(bind=engine)
-    # Создаем объект сессии из вышесозданной фабрики Session
+    # Создаем объект сессии из фабрики Session
     session = Session()
 
     # Создаем объект GoogleSheetDate для получения доступа к гугл документу и чтению данных
 
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
     id_number, order_number, price, date = gs.read_file()
-    # breakpoint()
-    # Создаем новую запись.
-    # new_post = DataBaseSheet(id_number='133', order_number="1313", price='13', date='13.05.2022')
 
+    # Создаем новую запись.
     row = DataBaseSheet(id_number=id_number, order_number=order_number,
                         price=price, price_rub=current_exchange_usd_to_rub(price),
                         date=date)
-
+    # ловим возможную ошибку, например, такая запись уже есть.
+    # если ошибку нашли, то перехватываем и делаем rollback
     try:
         # Добавляем запись
         session.add(row)
 
-        # Благодаря этой строчке мы добавляем данные а таблицу
+        # добавляем данные в таблицу
         session.commit()
     except (UniqueViolation, IntegrityError) as e:
         print('A duplicate record already exists')
