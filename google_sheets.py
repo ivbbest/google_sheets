@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Date
+from sqlalchemy import Column, Integer, Date
 from sqlalchemy.orm import sessionmaker
 from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
@@ -18,11 +18,14 @@ import requests
 from xml.etree import ElementTree
 
 
-
 Base = declarative_base()
 
 
 class DataBaseSheet(Base):
+    """
+    Класс для создания модели sqlalchemy. Можно использовать разные СУБД.
+    В данной задаче используется Postgres
+    """
     __tablename__ = 'sheet'
 
     id = Column(Integer, nullable=False, unique=True, primary_key=True, autoincrement=True)
@@ -37,6 +40,7 @@ class DataBaseSheet(Base):
 
 
 class GoogleSheetDate:
+    """Класс для авторизации и чтения данных из Google Sheets"""
     def __init__(self, credentials_file, spreadsheet_id):
         self.credentials_file = credentials_file
         self.spreadsheet_id = spreadsheet_id
@@ -48,7 +52,7 @@ class GoogleSheetDate:
             ['https://www.googleapis.com/auth/spreadsheets',
              'https://www.googleapis.com/auth/drive'])
         httpAuth = credentials.authorize(httplib2.Http())
-        self.service = apiclient.discovery.build('sheets', 'v4', http=httpAuth)
+        service = apiclient.discovery.build('sheets', 'v4', http=httpAuth)
 
     def read_file(self):
         # Чтение файла
@@ -102,7 +106,10 @@ def main():
 
 
 def current_exchange_usd_to_rub(cost_usd):
-    """Текущий курс доллара к рублю"""
+    """
+    Функция для получения текущего курса доллара к рублю
+    и конвертации cost_usd to rub.
+    """
     url = 'https://www.cbr.ru/scripts/XML_daily.asp'
     res = requests.get(url).content
     exchange_rate = ElementTree.fromstring(res).findtext('.//Valute[@ID="R01235"]/Value')
