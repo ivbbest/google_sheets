@@ -14,6 +14,11 @@ from sqlalchemy.orm import sessionmaker
 from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 
+import requests
+from xml.etree import ElementTree
+
+
+
 Base = declarative_base()
 
 
@@ -24,6 +29,7 @@ class DataBaseSheet(Base):
     id_number = Column(Integer, nullable=False, unique=True)
     order_number = Column(Integer, nullable=False, unique=True)
     price = Column(Integer, nullable=False)
+    price_rub = Column(Integer, nullable=False)
     date = Column(Date, nullable=False)
 
     def __str__(self):
@@ -52,7 +58,7 @@ class GoogleSheetDate:
             range='A:D',
             majorDimension='ROWS'
         ).execute()
-        return values['values'][1]
+        return values['values'][2]
 
 
 def main():
@@ -75,7 +81,9 @@ def main():
     # new_post = DataBaseSheet(id_number='133', order_number="1313", price='13', date='13.05.2022')
 
     row = DataBaseSheet(id_number=id_number, order_number=order_number,
-                        price=price, date=date)
+                        price=price, price_rub=current_exchange_usd_to_rub(price),
+                        date=date)
+
     try:
         # Добавляем запись
         session.add(row)
@@ -91,6 +99,16 @@ def main():
     # А теперь попробуем вывести все посты , которые есть в нашей таблице
     for row in session.query(DataBaseSheet):
         print(row)
+
+
+def current_exchange_usd_to_rub(cost_usd):
+    """Текущий курс доллара к рублю"""
+    url = 'https://www.cbr.ru/scripts/XML_daily.asp'
+    res = requests.get(url).content
+    exchange_rate = ElementTree.fromstring(res).findtext('.//Valute[@ID="R01235"]/Value')
+    cost_in_rub = int(float(exchange_rate.replace(',', '.')) * float(cost_usd))
+
+    return cost_in_rub
 
 
 if __name__ == "__main__":
