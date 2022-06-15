@@ -53,6 +53,7 @@ class GoogleSheetDate:
              'https://www.googleapis.com/auth/drive'])
         httpAuth = credentials.authorize(httplib2.Http())
         self.service = apiclient.discovery.build('sheets', 'v4', http=httpAuth)
+        self.drive = apiclient.discovery.build('drive', 'v3', http=httpAuth)
 
     def read_file(self):
         # Чтение файла
@@ -63,6 +64,17 @@ class GoogleSheetDate:
             majorDimension='ROWS'
         ).execute()
         return values['values'][3]
+
+    def get_revisions_file(self):
+        # Получение последней версии ревизии файла id
+        self.authorization()
+        values = self.drive.revisions().list(
+            fileId=self.spreadsheet_id,
+            fields='*',
+            pageSize=1000
+        ).execute()
+
+        return values['revisions'][1]['id']
 
 
 def main():
@@ -118,4 +130,7 @@ def current_exchange_usd_to_rub(cost_usd):
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    gs = GoogleSheetDate(credentials_file, spreadsheet_id)
+    pprint(gs.get_revisions_file())
+    breakpoint()
