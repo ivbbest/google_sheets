@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, Date
+from sqlalchemy import Column, Integer, Date, select
 from sqlalchemy.orm import sessionmaker
 from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
@@ -28,7 +28,8 @@ class DataBaseSheet(Base):
     """
     __tablename__ = 'sheet'
 
-    id = Column(Integer, nullable=False, unique=True, primary_key=True, autoincrement=True)
+    id = Column(Integer, nullable=False, unique=True, primary_key=True,
+                autoincrement=True)
     id_number = Column(Integer, nullable=False, unique=True)
     order_number = Column(Integer, nullable=False, unique=True)
     price = Column(Integer, nullable=False)
@@ -78,6 +79,7 @@ class GoogleSheetDate:
 
 
 def main():
+    db = DataBaseSheet()
     # Создаем объект Engine, который будет использоваться объектами ниже для связи с БД
     engine = create_engine(URL.create(**DATABASE))
     # Метод create_all создает таблицы в БД , определенные с помощью  DeclarativeBase
@@ -92,8 +94,14 @@ def main():
 
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
     id_number, order_number, price, date = gs.read_file()
+    breakpoint()
+    # проверяем существует ли order_number, то есть такой элемент уже в базе
+    if session.query(DataBaseSheet).filter_by(order_number=order_number).first() is not None:
+        print('Есть такой элемент')
+        # делаем обработку, есть ли изменения в данных и если они есть, то мы меняем данные
+        # если нет, то переходим к другому элементы из гугл таблицы
 
-    # Создаем новую запись.
+    # Если нет, то создаем новую запись.
     row = DataBaseSheet(id_number=id_number, order_number=order_number,
                         price=price, price_rub=current_exchange_usd_to_rub(price),
                         date=date)
@@ -130,7 +138,7 @@ def current_exchange_usd_to_rub(cost_usd):
 
 
 if __name__ == "__main__":
-    # main()
-    gs = GoogleSheetDate(credentials_file, spreadsheet_id)
-    pprint(gs.get_revisions_file())
-    breakpoint()
+    main()
+    # gs = GoogleSheetDate(credentials_file, spreadsheet_id)
+    # pprint(gs.get_revisions_file())
+    # breakpoint()
