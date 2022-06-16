@@ -79,7 +79,6 @@ class GoogleSheetDate:
 
 
 def main():
-    db = DataBaseSheet()
     # Создаем объект Engine, который будет использоваться объектами ниже для связи с БД
     engine = create_engine(URL.create(**DATABASE))
     # Метод create_all создает таблицы в БД , определенные с помощью  DeclarativeBase
@@ -94,34 +93,43 @@ def main():
 
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
     id_number, order_number, price, date = gs.read_file()
-    breakpoint()
+
     # проверяем существует ли order_number, то есть такой элемент уже в базе
     if session.query(DataBaseSheet).filter_by(order_number=order_number).first() is not None:
+        print(order_number)
+        elem = session.query(DataBaseSheet).filter_by(order_number=order_number).first()
+        if elem.id_number != id_number or elem.price != price or elem.date != date:
+            elem.id_number = id_number
+            elem.price = price
+            elem.date = date
+            elem.price_rub = current_exchange_usd_to_rub(price)
+            session.commit()
+
         print('Есть такой элемент')
         # делаем обработку, есть ли изменения в данных и если они есть, то мы меняем данные
         # если нет, то переходим к другому элементы из гугл таблицы
+    else:
+        # Если нет, то создаем новую запись.
+        row = DataBaseSheet(id_number=id_number, order_number=order_number,
+                            price=price, price_rub=current_exchange_usd_to_rub(price),
+                            date=date)
+        # ловим возможную ошибку, например, такая запись уже есть.
+        # если ошибку нашли, то перехватываем и делаем rollback
+        try:
+            # Добавляем запись
+            session.add(row)
 
-    # Если нет, то создаем новую запись.
-    row = DataBaseSheet(id_number=id_number, order_number=order_number,
-                        price=price, price_rub=current_exchange_usd_to_rub(price),
-                        date=date)
-    # ловим возможную ошибку, например, такая запись уже есть.
-    # если ошибку нашли, то перехватываем и делаем rollback
-    try:
-        # Добавляем запись
-        session.add(row)
+            # добавляем данные в таблицу
+            session.commit()
+        except (UniqueViolation, IntegrityError) as e:
+            print('A duplicate record already exists')
+            session.rollback()
+        finally:
+            session.close()
 
-        # добавляем данные в таблицу
-        session.commit()
-    except (UniqueViolation, IntegrityError) as e:
-        print('A duplicate record already exists')
-        session.rollback()
-    finally:
-        session.close()
-
-    # А теперь попробуем вывести все посты , которые есть в нашей таблице
-    for row in session.query(DataBaseSheet):
-        print(row)
+        # А теперь попробуем вывести все посты , которые есть в нашей таблице
+        # for row in session.query(DataBaseSheet):
+        #     print(row)
 
 
 def current_exchange_usd_to_rub(cost_usd):
