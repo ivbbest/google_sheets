@@ -64,7 +64,7 @@ class GoogleSheetDate:
             range='A:D',
             majorDimension='ROWS'
         ).execute()
-        return values['values'][3]
+        return values['values'][1:]
 
     def get_revisions_file(self):
         # Получение последней версии ревизии файла id
@@ -90,46 +90,48 @@ def main():
     session = Session()
 
     # Создаем объект GoogleSheetDate для получения доступа к гугл документу и чтению данных
-
+    # breakpoint()
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
-    id_number, order_number, price, date = gs.read_file()
+    google_file = gs.read_file()
+    for line in google_file:
+        id_number, order_number, price, date = line
 
-    # проверяем существует ли order_number, то есть такой элемент уже в базе
-    if session.query(DataBaseSheet).filter_by(order_number=order_number).first() is not None:
-        print(order_number)
-        elem = session.query(DataBaseSheet).filter_by(order_number=order_number).first()
-        if elem.id_number != id_number or elem.price != price or elem.date != date:
-            elem.id_number = id_number
-            elem.price = price
-            elem.date = date
-            elem.price_rub = current_exchange_usd_to_rub(price)
-            session.commit()
+        # проверяем существует ли order_number, то есть такой элемент уже в базе
+        if session.query(DataBaseSheet).filter_by(order_number=order_number).first() is not None:
+            print(order_number)
+            elem = session.query(DataBaseSheet).filter_by(order_number=order_number).first()
+            if elem.id_number != id_number or elem.price != price or elem.date != date:
+                elem.id_number = id_number
+                elem.price = price
+                elem.date = date
+                elem.price_rub = current_exchange_usd_to_rub(price)
+                session.commit()
 
-        print('Есть такой элемент')
-        # делаем обработку, есть ли изменения в данных и если они есть, то мы меняем данные
-        # если нет, то переходим к другому элементы из гугл таблицы
-    else:
-        # Если нет, то создаем новую запись.
-        row = DataBaseSheet(id_number=id_number, order_number=order_number,
-                            price=price, price_rub=current_exchange_usd_to_rub(price),
-                            date=date)
-        # ловим возможную ошибку, например, такая запись уже есть.
-        # если ошибку нашли, то перехватываем и делаем rollback
-        try:
-            # Добавляем запись
-            session.add(row)
+            print('Есть такой элемент')
+            # делаем обработку, есть ли изменения в данных и если они есть, то мы меняем данные
+            # если нет, то переходим к другому элементы из гугл таблицы
+        else:
+            # Если нет, то создаем новую запись.
+            row = DataBaseSheet(id_number=id_number, order_number=order_number,
+                                price=price, price_rub=current_exchange_usd_to_rub(price),
+                                date=date)
+            # ловим возможную ошибку, например, такая запись уже есть.
+            # если ошибку нашли, то перехватываем и делаем rollback
+            try:
+                # Добавляем запись
+                session.add(row)
 
-            # добавляем данные в таблицу
-            session.commit()
-        except (UniqueViolation, IntegrityError) as e:
-            print('A duplicate record already exists')
-            session.rollback()
-        finally:
-            session.close()
+                # добавляем данные в таблицу
+                session.commit()
+            except (UniqueViolation, IntegrityError) as e:
+                print('A duplicate record already exists')
+                session.rollback()
+            finally:
+                session.close()
 
-        # А теперь попробуем вывести все посты , которые есть в нашей таблице
-        # for row in session.query(DataBaseSheet):
-        #     print(row)
+            # А теперь попробуем вывести все посты , которые есть в нашей таблице
+            # for row in session.query(DataBaseSheet):
+            #     print(row)
 
 
 def current_exchange_usd_to_rub(cost_usd):
