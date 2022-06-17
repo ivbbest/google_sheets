@@ -9,7 +9,6 @@ mypython-353314-b1ee6d3bf042.json
 .venv/
 .venv
 venv
-*.txt
 revisions_version.txt
 
 # C extensions
