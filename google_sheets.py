@@ -1,8 +1,5 @@
-from pprint import pprint
-
 import httplib2
 import time
-import sys
 import apiclient.discovery
 from oauth2client.service_account import ServiceAccountCredentials
 from config import credentials_file, spreadsheet_id, DATABASE, revisions_version
@@ -16,7 +13,6 @@ from sqlalchemy.orm import sessionmaker
 
 import requests
 from xml.etree import ElementTree
-
 
 Base = declarative_base()
 
@@ -76,8 +72,8 @@ class DataBaseSheet(Base):
     @staticmethod
     def is_exist(order_number):
         """Проверка существует ли запись в базе"""
-        exist = session.query(DataBaseSheet).filter_by(order_number=order_number). \
-                    first() is not None
+        exist = session.query(DataBaseSheet). \
+                    filter_by(order_number=order_number).first() is not None
 
         return exist
 
@@ -96,11 +92,9 @@ class DataBaseSheet(Base):
 
 class GoogleSheetDate:
     """Класс для авторизации и чтения данных из Google Sheets"""
-    def __init__(self, credentials_file, spreadsheet_id):
-        # self.drive = None
-        # self.service = None
-        self.credentials_file = credentials_file
-        self.spreadsheet_id = spreadsheet_id
+    def __init__(self, credentials, sheet_id):
+        self.credentials_file = credentials
+        self.spreadsheet_id = sheet_id
 
     def authorization(self):
         """Авторизуемся и получаем service — экземпляр доступа к API"""
