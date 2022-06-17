@@ -2,7 +2,8 @@ import httplib2
 import time
 import apiclient.discovery
 from oauth2client.service_account import ServiceAccountCredentials
-from config import credentials_file, spreadsheet_id, DATABASE, revisions_version
+from config import credentials_file, spreadsheet_id, DATABASE, \
+    revisions_version_file, token_tg, chat_id
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
@@ -13,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 import requests
 from xml.etree import ElementTree
+
 
 Base = declarative_base()
 
@@ -92,6 +94,7 @@ class DataBaseSheet(Base):
 
 class GoogleSheetDate:
     """Класс для авторизации и чтения данных из Google Sheets"""
+
     def __init__(self, credentials, sheet_id):
         self.credentials_file = credentials
         self.spreadsheet_id = sheet_id
@@ -128,7 +131,7 @@ class GoogleSheetDate:
 
         сurrent_revisions = values['revisions'][-1]['id']
 
-        with open(revisions_version, 'r+') as f:
+        with open(revisions_version_file, 'r+') as f:
             try:
                 prev_revisions = f.readline().strip()
 
@@ -171,6 +174,17 @@ class GoogleSheetDate:
         diff_order = list(set_order_db.difference(set_order_google))
 
         return diff_order
+
+
+def send_msg(text):
+    """
+    Отправка сообщения в чат бот ТГ. Если срок прошел, то пишем в телеграм
+    """
+    url_req = "https://api.telegram.org/bot" + token_tg + \
+              "/sendMessage" + "?chat_id=" + chat_id + \
+              "&text=" + text
+    results = requests.get(url_req)
+    print(results.json())
 
 
 def main():
@@ -232,4 +246,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    send_msg('Hello python')
