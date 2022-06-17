@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 import requests
 from xml.etree import ElementTree
 
+
 Base = declarative_base()
 
 # Создаем объект Engine, который будет использоваться объектами ниже для связи с БД
@@ -65,7 +66,7 @@ class DataBaseSheet(Base):
                 "id_number": id_number,
                 "order_number": order_number,
                 "price": price,
-                "price_rub": convert_usd_to_rub(price),
+                "price_rub": GoogleSheetDate.convert_usd_to_rub(price),
                 "date": date
             },
             synchronize_session=False
@@ -95,7 +96,6 @@ class DataBaseSheet(Base):
 
 class GoogleSheetDate:
     """Класс для авторизации и чтения данных из Google Sheets"""
-
     def __init__(self, credentials_file, spreadsheet_id):
         # self.drive = None
         # self.service = None
@@ -153,37 +153,72 @@ class GoogleSheetDate:
 
         return update
 
+    @staticmethod
+    def convert_usd_to_rub(cost_usd):
+        """
+        Функция для получения текущего курса доллара к рублю
+        и конвертации cost_usd to rub.
+        """
+        url = 'https://www.cbr.ru/scripts/XML_daily.asp'
+        res = requests.get(url).content
+        exchange_rate = ElementTree.fromstring(res).findtext('.//Valute[@ID="R01235"]/Value')
+        cost_in_rub = int(float(exchange_rate.replace(',', '.')) * float(cost_usd))
+
+        return cost_in_rub
+
+    @staticmethod
+    def diff_order_db_vs_sheet(order_sheet):
+        """
+         Анализ какие есть номера заказов в базе, а каких нет в гугл доке
+         Если номеров заказов нет в гугл доке, то в дальнейшем удаляем из базы их.
+        """
+        set_order_db = set([elem[0] for elem in session.query(DataBaseSheet.order_number).all()])
+        set_order_google = set([int(elem[1]) for elem in order_sheet])
+        diff_order = list(set_order_db.difference(set_order_google))
+
+        return diff_order
+
 
 def main():
     print('Запустили main')
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
-
+    # Запускаем цикл для проверки в режиме онлайн обновлений в Google Sheet
     while True:
         try:
             print('Попали в вечный цикл')
+            # если изменилась версия Google Sheet, то парсим данные
             if gs.check_revisions_sheet():
                 print('Ecть изменения, будем проверять.')
                 time.sleep(2)
                 google_file = gs.read_file()
-                # breakpoint()
-                if len(diff_order_db_vs_sheet(google_file)) > 0:
-                    DataBaseSheet.delete(diff_order_db_vs_sheet(google_file))
+                diff_order = gs.diff_order_db_vs_sheet(google_file)
+                # если в бд есть заказы, которых нет в Sheet, то удаляем
+                if len(diff_order):
+                    print('Есть лишние товары в БД. Удалять надо.')
+                    time.sleep(2)
+                    DataBaseSheet.delete(diff_order)
 
+                # считываем данные построчно
                 for line in google_file:
                     id_number, order_number, price, date = line
                     row = DataBaseSheet(id_number=id_number, order_number=order_number,
-                                        price=price, price_rub=convert_usd_to_rub(price),
+                                        price=price, price_rub=gs.convert_usd_to_rub(price),
                                         date=date)
 
                     # проверяем существует ли order_number, то есть такой элемент уже в базе
                     if DataBaseSheet.is_exist(order_number):
                         print(order_number)
                         print('Есть такой элемент')
+                        time.sleep(2)
                         if DataBaseSheet.is_changes(line):
+                            print('Данные по заказу изменились. Надо обновлять')
+                            time.sleep(2)
                             DataBaseSheet.update(line)
                     else:
                         # Если нет, то создаем новую запись.
                         # Добавляем запись
+                        print('Новые товары. Надо добавлять в базу')
+                        time.sleep(2)
                         session.add(row)
                         # добавляем данные в таблицу
                         session.commit()
@@ -197,50 +232,10 @@ def main():
             print("\n Переподключение к Google Sheet \n")
             time.sleep(5)
 
+        # если нет обновлений, то sleep
         time.sleep(15)
-
-
-def convert_usd_to_rub(cost_usd):
-    """
-    Функция для получения текущего курса доллара к рублю
-    и конвертации cost_usd to rub.
-    """
-    url = 'https://www.cbr.ru/scripts/XML_daily.asp'
-    res = requests.get(url).content
-    exchange_rate = ElementTree.fromstring(res).findtext('.//Valute[@ID="R01235"]/Value')
-    cost_in_rub = int(float(exchange_rate.replace(',', '.')) * float(cost_usd))
-
-    return cost_in_rub
-
-
-def diff_order_db_vs_sheet(order_sheet):
-    """
-     Анализ какие есть номера заказов в базе, а каких нет в гугл доке
-     Если номеров заказов нет в гугл доке, то в дальнейшем удаляем из базы их.
-    """
-    set_order_db = set([elem[0] for elem in session.query(DataBaseSheet.order_number).all()])
-    set_order_google = set([int(elem[1]) for elem in order_sheet])
-    diff_order = list(set_order_db.difference(set_order_google))
-
-    return diff_order
+        print('sleeeeeeeeep')
 
 
 if __name__ == "__main__":
     main()
-    # gs = GoogleSheetDate(credentials_file, spreadsheet_id)
-    # print(gs.check_revisions_sheet())
-    # breakpoint()
-
-    """
-    Осталось доделать:
-    2. Добавить проверку ревизии гугл дока. Если она отличается от последней, до делать парсинг всего гугл дока и дальше
-    разбор полетов: добавление, удаление, обновление строчек.
-    3. Поставить пункт 2 на автомат при работе скрипта. WHile TRUE и sleep периодами, чтобы не упал скрипт.
-    Посмотрел, какие ошибки могут возникать в случае работы WHile TRUE и как лучше подстраховать, чтобы 
-    плюс минус в режиме онлайн все работало.
-    6. Сделать проверку необязательных пунктов и постараться их допилить или хотя бы часть:
-    
-    
-    а) Отправка в бот ТГ, если прошел срок https://flammlin.com/blog/2022/04/18/python-otpravka-soobshheniya-v-telegram/ или https://core.telegram.org/bots/api#available-methods или https://ru.stackoverflow.com/questions/931492/%D0%9E%D1%82%D0%BF%D1%80%D0%B0%D0%B2%D0%BA%D0%B0-%D1%81%D0%BE%D0%BE%D0%B1%D1%89%D0%B5%D0%BD%D0%B8%D1%8F-%D0%B2-%D0%BA%D0%B0%D0%BD%D0%B0%D0%BB-telegram-%D1%81%D1%80%D0%B5%D0%B4%D1%81%D1%82%D0%B2%D0%B0%D0%BC%D0%B8-python
-    б) упаковка в докер контейнер https://dev.to/stefanopassador/docker-compose-with-python-and-posgresql-33kk 
-    """
