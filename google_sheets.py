@@ -75,8 +75,8 @@ class DataBaseSheet(Base):
     @staticmethod
     def is_exist(order_number):
         """Проверка существует ли запись в базе"""
-        exist = session.query(DataBaseSheet).filter_by(order_number=order_number).\
-            first() is not None
+        exist = session.query(DataBaseSheet).filter_by(order_number=order_number). \
+                    first() is not None
 
         return exist
 
@@ -95,6 +95,7 @@ class DataBaseSheet(Base):
 
 class GoogleSheetDate:
     """Класс для авторизации и чтения данных из Google Sheets"""
+
     def __init__(self, credentials_file, spreadsheet_id):
         # self.drive = None
         # self.service = None
@@ -143,7 +144,7 @@ class GoogleSheetDate:
                 if int(сurrent_revisions) > int(prev_revisions):
                     print(prev_revisions)
                     update = True
-            except ValueError as e:
+            except ValueError:
                 print('Некорректный prev_revisions. Проверьте данные.')
             finally:
                 f.seek(0)
@@ -156,43 +157,47 @@ class GoogleSheetDate:
 def main():
     print('Запустили main')
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
-    print('Получили gs=', gs)
+
     while True:
-        print('Попали в вечный цикл')
-        if gs.check_revisions_sheet():
-            print('Ecть изменения, будем проверять.')
-            time.sleep(2)
-            google_file = gs.read_file()
-            # breakpoint()
-            if len(diff_order_db_vs_sheet(google_file)) > 0:
-                DataBaseSheet.delete(diff_order_db_vs_sheet(google_file))
+        try:
+            print('Попали в вечный цикл')
+            if gs.check_revisions_sheet():
+                print('Ecть изменения, будем проверять.')
+                time.sleep(2)
+                google_file = gs.read_file()
+                # breakpoint()
+                if len(diff_order_db_vs_sheet(google_file)) > 0:
+                    DataBaseSheet.delete(diff_order_db_vs_sheet(google_file))
 
-            for line in google_file:
-                id_number, order_number, price, date = line
-                row = DataBaseSheet(id_number=id_number, order_number=order_number,
-                                    price=price, price_rub=convert_usd_to_rub(price),
-                                    date=date)
+                for line in google_file:
+                    id_number, order_number, price, date = line
+                    row = DataBaseSheet(id_number=id_number, order_number=order_number,
+                                        price=price, price_rub=convert_usd_to_rub(price),
+                                        date=date)
 
-                # проверяем существует ли order_number, то есть такой элемент уже в базе
-                if DataBaseSheet.is_exist(order_number):
-                    print(order_number)
-                    print('Есть такой элемент')
-                    if DataBaseSheet.is_changes(line):
-                        DataBaseSheet.update(line)
+                    # проверяем существует ли order_number, то есть такой элемент уже в базе
+                    if DataBaseSheet.is_exist(order_number):
+                        print(order_number)
+                        print('Есть такой элемент')
+                        if DataBaseSheet.is_changes(line):
+                            DataBaseSheet.update(line)
+                    else:
+                        # Если нет, то создаем новую запись.
+                        # Добавляем запись
+                        session.add(row)
+                        # добавляем данные в таблицу
+                        session.commit()
+        # Если возникает ошибка при длительном ожидание ответа, то перехватываем
+        # Делаем sleep и обратно в работу
+        except (requests.exceptions.ConnectionError, TimeoutError,
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectTimeout,
+                requests.exceptions.ReadTimeout):
 
-                else:
-                    # Если нет, то создаем новую запись.
-                    # Добавляем запись
-                    session.add(row)
+            print("\n Переподключение к Google Sheet \n")
+            time.sleep(5)
 
-                   # добавляем данные в таблицу
-                    session.commit()
-
-                    # А теперь попробуем вывести все посты , которые есть в нашей таблице
-                    # for row in session.query(DataBaseSheet):
-                    #     print(row)
-        time.sleep(30)
-        print('sleep')
+        time.sleep(15)
 
 
 def convert_usd_to_rub(cost_usd):
