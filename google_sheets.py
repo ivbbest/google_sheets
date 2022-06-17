@@ -50,6 +50,13 @@ class DataBaseSheet(Base):
     def __str__(self):
         return f"{self.order_number}"
 
+    @staticmethod
+    def delete(orders):
+        for elem in orders:
+            session.query(DataBaseSheet).filter(DataBaseSheet.order_number == elem). \
+                delete(synchronize_session=False)
+            session.commit()
+
 
 class GoogleSheetDate:
     """Класс для авторизации и чтения данных из Google Sheets"""
@@ -94,62 +101,57 @@ def main():
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
     google_file = gs.read_file()
 
-    # анализ какие есть номера заказов в базе, а каких нет в гугл доке
-    # если номеров заказов нет в гугл доке, то в дальнейшем удаляем из базы их
-    set_order_db = set([elem[0] for elem in session.query(DataBaseSheet.order_number).all()])
-    set_order_google = set([int(elem[1]) for elem in google_file])
-    print(set_order_db)
-    print(set_order_google)
-    print(set_order_db.difference(set_order_google))
+    if len(diff_order_db_vs_sheet(google_file)) > 0:
+        DataBaseSheet.delete(diff_order_db_vs_sheet(google_file))
 
-    # for line in google_file:
-    #     id_number, order_number, price, date = line
-    #     row = DataBaseSheet(id_number=id_number, order_number=order_number,
-    #                         price=price, price_rub=current_exchange_usd_to_rub(price),
-    #                         date=date)
-    #
-    #     # проверяем существует ли order_number, то есть такой элемент уже в базе
-    #     if session.query(DataBaseSheet).filter_by(order_number=order_number).first() is not None:
-    #         print(order_number)
-    #         print('Есть такой элемент')
-    #
-    #         session.query(DataBaseSheet).filter(DataBaseSheet.order_number == order_number).update(
-    #             {
-    #                 "id_number": id_number,
-    #                 "order_number": order_number,
-    #                 "price": price,
-    #                 "price_rub": current_exchange_usd_to_rub(price),
-    #                 "date": date
-    #             },
-    #             synchronize_session=False
-    #         )
-    #         session.commit()
-    #
-    #     else:
-    #         # Если нет, то создаем новую запись.
-    #         # row = DataBaseSheet(id_number=id_number, order_number=order_number,
-    #         #                     price=price, price_rub=current_exchange_usd_to_rub(price),
-    #         #                     date=date)
-    #         # ловим возможную ошибку, например, такая запись уже есть.
-    #         # если ошибку нашли, то перехватываем и делаем rollback
-    #         try:
-    #             # Добавляем запись
-    #             session.add(row)
-    #
-    #             # добавляем данные в таблицу
-    #             session.commit()
-    #         except (UniqueViolation, IntegrityError) as e:
-    #             print('A duplicate record already exists')
-    #             session.rollback()
-    #         finally:
-    #             session.close()
-    #
-    #         # А теперь попробуем вывести все посты , которые есть в нашей таблице
-    #         # for row in session.query(DataBaseSheet):
-    #         #     print(row)
+    for line in google_file:
+        id_number, order_number, price, date = line
+        row = DataBaseSheet(id_number=id_number, order_number=order_number,
+                            price=price, price_rub=convert_usd_to_rub(price),
+                            date=date)
+
+        # проверяем существует ли order_number, то есть такой элемент уже в базе
+        if session.query(DataBaseSheet).filter_by(order_number=order_number).first() is not None:
+            print(order_number)
+            print('Есть такой элемент')
+
+            session.query(DataBaseSheet).filter(DataBaseSheet.order_number == order_number).update(
+                {
+                    "id_number": id_number,
+                    "order_number": order_number,
+                    "price": price,
+                    "price_rub": convert_usd_to_rub(price),
+                    "date": date
+                },
+                synchronize_session=False
+            )
+            session.commit()
+
+        else:
+            # Если нет, то создаем новую запись.
+            # row = DataBaseSheet(id_number=id_number, order_number=order_number,
+            #                     price=price, price_rub=convert_usd_to_rub(price),
+            #                     date=date)
+            # ловим возможную ошибку, например, такая запись уже есть.
+            # если ошибку нашли, то перехватываем и делаем rollback
+            try:
+                # Добавляем запись
+                session.add(row)
+
+                # добавляем данные в таблицу
+                session.commit()
+            except (UniqueViolation, IntegrityError) as e:
+                print('A duplicate record already exists')
+                session.rollback()
+            finally:
+                session.close()
+
+            # А теперь попробуем вывести все посты , которые есть в нашей таблице
+            # for row in session.query(DataBaseSheet):
+            #     print(row)
 
 
-def current_exchange_usd_to_rub(cost_usd):
+def convert_usd_to_rub(cost_usd):
     """
     Функция для получения текущего курса доллара к рублю
     и конвертации cost_usd to rub.
@@ -162,8 +164,37 @@ def current_exchange_usd_to_rub(cost_usd):
     return cost_in_rub
 
 
+def diff_order_db_vs_sheet(order_sheet):
+    """
+     Анализ какие есть номера заказов в базе, а каких нет в гугл доке
+     Если номеров заказов нет в гугл доке, то в дальнейшем удаляем из базы их.
+    """
+    set_order_db = set([elem[0] for elem in session.query(DataBaseSheet.order_number).all()])
+    set_order_google = set([int(elem[1]) for elem in order_sheet])
+    diff_order = list(set_order_db.difference(set_order_google))
+
+    return diff_order
+
+
 if __name__ == "__main__":
     main()
     # gs = GoogleSheetDate(credentials_file, spreadsheet_id)
     # pprint(gs.get_revisions_file())
     # breakpoint()
+
+    """
+    Осталось доделать:
+    1. Удаление полей из БД, если их нет в Гугл доке.
+    2. Добавить проверку ревизии гугл дока. Если она отличается от последней, до делать парсинг всего гугл дока и дальше
+    разбор полетов: добавление, удаление, обновление строчек.
+    3. Поставить пункт 2 на автомат при работе скрипта. WHile TRUE и sleep периодами, чтобы не упал скрипт.
+    Посмотрел, какие ошибки могут возникать в случае работы WHile TRUE и как лучше подстраховать, чтобы 
+    плюс минус в режиме онлайн все работало.
+    4. Попробовать вынести в классы разные функции типа обновления/удаления.
+    5. Сделать ветвления для удаления/обновления/добавления в main()
+    6. Сделать проверку необязательных пунктов и постараться их допилить или хотя бы часть:
+    
+    
+    а) Отправка в бот ТГ, если прошел срок https://flammlin.com/blog/2022/04/18/python-otpravka-soobshheniya-v-telegram/ или https://core.telegram.org/bots/api#available-methods или https://ru.stackoverflow.com/questions/931492/%D0%9E%D1%82%D0%BF%D1%80%D0%B0%D0%B2%D0%BA%D0%B0-%D1%81%D0%BE%D0%BE%D0%B1%D1%89%D0%B5%D0%BD%D0%B8%D1%8F-%D0%B2-%D0%BA%D0%B0%D0%BD%D0%B0%D0%BB-telegram-%D1%81%D1%80%D0%B5%D0%B4%D1%81%D1%82%D0%B2%D0%B0%D0%BC%D0%B8-python
+    б) упаковка в докер контейнер https://dev.to/stefanopassador/docker-compose-with-python-and-posgresql-33kk 
+    """
