@@ -51,6 +51,7 @@ class DataBaseSheet(Base):
 
     @staticmethod
     def delete(orders):
+        """Удаление записи в БД"""
         for elem in orders:
             session.query(DataBaseSheet).filter(DataBaseSheet.order_number == elem). \
                 delete(synchronize_session=False)
@@ -58,6 +59,7 @@ class DataBaseSheet(Base):
 
     @staticmethod
     def update(data_order):
+        """Обновление данных в БД"""
         id_number, order_number, price, date = data_order
         session.query(DataBaseSheet).filter(DataBaseSheet.order_number == order_number).update(
             {
@@ -73,6 +75,7 @@ class DataBaseSheet(Base):
 
     @staticmethod
     def is_exist(order_number):
+        """Проверка существует ли запись в базе"""
         exist = session.query(DataBaseSheet).filter_by(order_number=order_number).\
             first() is not None
 
@@ -80,6 +83,7 @@ class DataBaseSheet(Base):
 
     @staticmethod
     def is_changes(date_sheet):
+        """Проверка на изменения данных в базе по конкретной заказу"""
         change = False
         id_number, order_number, price, date = date_sheet
         elem = session.query(DataBaseSheet).filter_by(order_number=order_number).first()
@@ -98,7 +102,7 @@ class GoogleSheetDate:
         self.spreadsheet_id = spreadsheet_id
 
     def authorization(self):
-        # Авторизуемся и получаем service — экземпляр доступа к API
+        """Авторизуемся и получаем service — экземпляр доступа к API"""
         credentials = ServiceAccountCredentials.from_json_keyfile_name(
             self.credentials_file,
             ['https://www.googleapis.com/auth/spreadsheets',
@@ -108,7 +112,7 @@ class GoogleSheetDate:
         self.drive = apiclient.discovery.build('drive', 'v3', http=httpAuth)
 
     def read_file(self):
-        # Чтение файла
+        """Чтение файла"""
         self.authorization()
         values = self.service.spreadsheets().values().get(
             spreadsheetId=self.spreadsheet_id,
@@ -118,7 +122,7 @@ class GoogleSheetDate:
         return values['values'][1:]
 
     def get_revisions_file(self):
-        # Получение последней версии ревизии файла id
+        """Получение последней версии ревизии файла id"""
         self.authorization()
         values = self.drive.revisions().list(
             fileId=self.spreadsheet_id,
@@ -151,22 +155,11 @@ def main():
 
         else:
             # Если нет, то создаем новую запись.
-            # row = DataBaseSheet(id_number=id_number, order_number=order_number,
-            #                     price=price, price_rub=convert_usd_to_rub(price),
-            #                     date=date)
-            # ловим возможную ошибку, например, такая запись уже есть.
-            # если ошибку нашли, то перехватываем и делаем rollback
-            try:
-                # Добавляем запись
-                session.add(row)
+            # Добавляем запись
+            session.add(row)
 
-                # добавляем данные в таблицу
-                session.commit()
-            except (UniqueViolation, IntegrityError) as e:
-                print('A duplicate record already exists')
-                session.rollback()
-            finally:
-                session.close()
+           # добавляем данные в таблицу
+            session.commit()
 
             # А теперь попробуем вывести все посты , которые есть в нашей таблице
             # for row in session.query(DataBaseSheet):
@@ -206,7 +199,6 @@ if __name__ == "__main__":
 
     """
     Осталось доделать:
-    1. Удаление полей из БД, если их нет в Гугл доке.
     2. Добавить проверку ревизии гугл дока. Если она отличается от последней, до делать парсинг всего гугл дока и дальше
     разбор полетов: добавление, удаление, обновление строчек.
     3. Поставить пункт 2 на автомат при работе скрипта. WHile TRUE и sleep периодами, чтобы не упал скрипт.
