@@ -1,19 +1,18 @@
 from pprint import pprint
 
 import httplib2
+import time
+import sys
 import apiclient.discovery
 from oauth2client.service_account import ServiceAccountCredentials
-from config import credentials_file, spreadsheet_id, DATABASE
+from config import credentials_file, spreadsheet_id, DATABASE, revisions_version
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, Date, select
+from sqlalchemy import Column, Integer, Date
 from sqlalchemy.orm import sessionmaker
-from psycopg2.errors import UniqueViolation
-from sqlalchemy.exc import IntegrityError
-
 
 import requests
 from xml.etree import ElementTree
@@ -96,8 +95,9 @@ class DataBaseSheet(Base):
 
 class GoogleSheetDate:
     """Класс для авторизации и чтения данных из Google Sheets"""
-
     def __init__(self, credentials_file, spreadsheet_id):
+        # self.drive = None
+        # self.service = None
         self.credentials_file = credentials_file
         self.spreadsheet_id = spreadsheet_id
 
@@ -119,10 +119,11 @@ class GoogleSheetDate:
             range='A:D',
             majorDimension='ROWS'
         ).execute()
-        return values['values'][1:]
+        return values['values'][1:5]
 
-    def get_revisions_file(self):
+    def check_revisions_sheet(self):
         """Получение последней версии ревизии файла id"""
+        update = False
         self.authorization()
         values = self.drive.revisions().list(
             fileId=self.spreadsheet_id,
@@ -130,40 +131,68 @@ class GoogleSheetDate:
             pageSize=1000
         ).execute()
 
-        return values['revisions'][1]['id']
+        сurrent_revisions = values['revisions'][-1]['id']
+
+        with open(revisions_version, 'r+') as f:
+            try:
+                prev_revisions = f.readline().strip()
+
+                print(prev_revisions)
+                print(сurrent_revisions)
+
+                if int(сurrent_revisions) > int(prev_revisions):
+                    print(prev_revisions)
+                    update = True
+            except ValueError as e:
+                print('Некорректный prev_revisions. Проверьте данные.')
+            finally:
+                f.seek(0)
+                f.write(сurrent_revisions)
+                print(update)
+
+        return update
 
 
 def main():
+    print('Запустили main')
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
-    google_file = gs.read_file()
-    breakpoint()
-    if len(diff_order_db_vs_sheet(google_file)) > 0:
-        DataBaseSheet.delete(diff_order_db_vs_sheet(google_file))
+    print('Получили gs=', gs)
+    while True:
+        print('Попали в вечный цикл')
+        if gs.check_revisions_sheet():
+            print('Ecть изменения, будем проверять.')
+            time.sleep(2)
+            google_file = gs.read_file()
+            # breakpoint()
+            if len(diff_order_db_vs_sheet(google_file)) > 0:
+                DataBaseSheet.delete(diff_order_db_vs_sheet(google_file))
 
-    for line in google_file:
-        id_number, order_number, price, date = line
-        row = DataBaseSheet(id_number=id_number, order_number=order_number,
-                            price=price, price_rub=convert_usd_to_rub(price),
-                            date=date)
+            for line in google_file:
+                id_number, order_number, price, date = line
+                row = DataBaseSheet(id_number=id_number, order_number=order_number,
+                                    price=price, price_rub=convert_usd_to_rub(price),
+                                    date=date)
 
-        # проверяем существует ли order_number, то есть такой элемент уже в базе
-        if DataBaseSheet.is_exist(order_number):
-            print(order_number)
-            print('Есть такой элемент')
-            if DataBaseSheet.is_changes(line):
-                DataBaseSheet.update(line)
+                # проверяем существует ли order_number, то есть такой элемент уже в базе
+                if DataBaseSheet.is_exist(order_number):
+                    print(order_number)
+                    print('Есть такой элемент')
+                    if DataBaseSheet.is_changes(line):
+                        DataBaseSheet.update(line)
 
-        else:
-            # Если нет, то создаем новую запись.
-            # Добавляем запись
-            session.add(row)
+                else:
+                    # Если нет, то создаем новую запись.
+                    # Добавляем запись
+                    session.add(row)
 
-           # добавляем данные в таблицу
-            session.commit()
+                   # добавляем данные в таблицу
+                    session.commit()
 
-            # А теперь попробуем вывести все посты , которые есть в нашей таблице
-            # for row in session.query(DataBaseSheet):
-            #     print(row)
+                    # А теперь попробуем вывести все посты , которые есть в нашей таблице
+                    # for row in session.query(DataBaseSheet):
+                    #     print(row)
+        time.sleep(30)
+        print('sleep')
 
 
 def convert_usd_to_rub(cost_usd):
@@ -194,7 +223,7 @@ def diff_order_db_vs_sheet(order_sheet):
 if __name__ == "__main__":
     main()
     # gs = GoogleSheetDate(credentials_file, spreadsheet_id)
-    # pprint(gs.get_revisions_file())
+    # print(gs.check_revisions_sheet())
     # breakpoint()
 
     """
@@ -204,8 +233,6 @@ if __name__ == "__main__":
     3. Поставить пункт 2 на автомат при работе скрипта. WHile TRUE и sleep периодами, чтобы не упал скрипт.
     Посмотрел, какие ошибки могут возникать в случае работы WHile TRUE и как лучше подстраховать, чтобы 
     плюс минус в режиме онлайн все работало.
-    4. Попробовать вынести в классы разные функции типа обновления/удаления.
-    5. Сделать ветвления для удаления/обновления/добавления в main()
     6. Сделать проверку необязательных пунктов и постараться их допилить или хотя бы часть:
     
     
