@@ -13,7 +13,6 @@ from sqlalchemy import Column, Integer, Date, select
 from sqlalchemy.orm import sessionmaker
 from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func
 
 
 import requests
@@ -56,6 +55,39 @@ class DataBaseSheet(Base):
             session.query(DataBaseSheet).filter(DataBaseSheet.order_number == elem). \
                 delete(synchronize_session=False)
             session.commit()
+
+    @staticmethod
+    def update(data_order):
+        id_number, order_number, price, date = data_order
+        session.query(DataBaseSheet).filter(DataBaseSheet.order_number == order_number).update(
+            {
+                "id_number": id_number,
+                "order_number": order_number,
+                "price": price,
+                "price_rub": convert_usd_to_rub(price),
+                "date": date
+            },
+            synchronize_session=False
+        )
+        session.commit()
+
+    @staticmethod
+    def is_exist(order_number):
+        exist = session.query(DataBaseSheet).filter_by(order_number=order_number).\
+            first() is not None
+
+        return exist
+
+    @staticmethod
+    def is_changes(date_sheet):
+        change = False
+        id_number, order_number, price, date = date_sheet
+        elem = session.query(DataBaseSheet).filter_by(order_number=order_number).first()
+
+        if elem.id_number != id_number or elem.price != price or elem.date != date:
+            change = True
+
+        return change
 
 
 class GoogleSheetDate:
@@ -100,7 +132,7 @@ class GoogleSheetDate:
 def main():
     gs = GoogleSheetDate(credentials_file, spreadsheet_id)
     google_file = gs.read_file()
-
+    breakpoint()
     if len(diff_order_db_vs_sheet(google_file)) > 0:
         DataBaseSheet.delete(diff_order_db_vs_sheet(google_file))
 
@@ -111,21 +143,11 @@ def main():
                             date=date)
 
         # проверяем существует ли order_number, то есть такой элемент уже в базе
-        if session.query(DataBaseSheet).filter_by(order_number=order_number).first() is not None:
+        if DataBaseSheet.is_exist(order_number):
             print(order_number)
             print('Есть такой элемент')
-
-            session.query(DataBaseSheet).filter(DataBaseSheet.order_number == order_number).update(
-                {
-                    "id_number": id_number,
-                    "order_number": order_number,
-                    "price": price,
-                    "price_rub": convert_usd_to_rub(price),
-                    "date": date
-                },
-                synchronize_session=False
-            )
-            session.commit()
+            if DataBaseSheet.is_changes(line):
+                DataBaseSheet.update(line)
 
         else:
             # Если нет, то создаем новую запись.
