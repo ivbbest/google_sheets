@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 import apiclient.discovery
 from oauth2client.service_account import ServiceAccountCredentials
-from config import credentials_file, spreadsheet_id, DATABASE, \
+from config import credentials_file, DATABASE, \
     revisions_version_file, token_tg, chat_id
 
 from sqlalchemy import create_engine
@@ -28,6 +28,8 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 # Создаем объект сессии из фабрики Session
 session = Session()
+
+spreadsheet_id = '1LYA_hd2Kf2HwyWHW_igZPNCH_D8dPRKNOb0aAnk9eAM'
 
 
 class DataBaseSheet(Base):
