@@ -1,5 +1,6 @@
 import httplib2
 import time
+from datetime import datetime
 import apiclient.discovery
 from oauth2client.service_account import ServiceAccountCredentials
 from config import credentials_file, spreadsheet_id, DATABASE, \
@@ -175,6 +176,15 @@ class GoogleSheetDate:
 
         return diff_order
 
+    @staticmethod
+    def check_order_date(order_date, order_number):
+        """
+        Проверяю дату заказа и текущую.
+        Если срок прошел, то отправляю сообщение в телеграм
+        """
+        if datetime.now() > datetime.strptime(order_date, "%d.%m.%Y"):
+            send_msg(f"Дата поставки по заказу №{order_number} прошла.")
+
 
 def send_msg(text):
     """
@@ -183,8 +193,7 @@ def send_msg(text):
     url_req = "https://api.telegram.org/bot" + token_tg + \
               "/sendMessage" + "?chat_id=" + chat_id + \
               "&text=" + text
-    results = requests.get(url_req)
-    print(results.json())
+    requests.get(url_req)
 
 
 def main():
@@ -209,6 +218,10 @@ def main():
                 # считываем данные построчно
                 for line in google_file:
                     id_number, order_number, price, date = line
+
+                    # проверка даты поставки
+                    gs.check_order_date(date, order_number)
+
                     row = DataBaseSheet(id_number=id_number, order_number=order_number,
                                         price=price, price_rub=gs.convert_usd_to_rub(price),
                                         date=date)
@@ -246,5 +259,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
-    send_msg('Hello python')
+    main()
