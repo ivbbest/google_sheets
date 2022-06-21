@@ -120,7 +120,7 @@ class GoogleSheetDate:
             range='A:D',
             majorDimension='ROWS'
         ).execute()
-        return values['values'][1:5]
+        return values['values'][1:]
 
     def check_revisions_sheet(self):
         """Получение последней версии ревизии файла id"""
